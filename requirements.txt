@@ -1,0 +1,5 @@
+tensorflow==1.15.0
+boto
+Pattern==3.6
+nltk
+scikit-learn

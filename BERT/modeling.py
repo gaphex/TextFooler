@@ -65,7 +65,8 @@ PRETRAINED_CONFIG_ARCHIVE_MAP = {
     'bert-base-cased-finetuned-mrpc': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-cased-finetuned-mrpc-config.json",
 }
 BERT_CONFIG_NAME = 'bert_config.json'
-TF_WEIGHTS_NAME = 'model.ckpt'
+TF_WEIGHTS_NAME = 'bert_model.ckpt.data-00000-of-00001'
+weights_path = '/datadrive/axon/asistant/uncased_L-12_H-768_A-12/bert_model.ckpt'
 
 def prune_linear_layer(layer, index, dim=0):
     """ Prune a linear layer (a model parameters) to keep only entries in index.
@@ -124,27 +125,32 @@ def load_tf_weights_in_bert(model, tf_checkpoint_path):
             continue
         pointer = model
         for m_name in name:
-            if re.fullmatch(r'[A-Za-z]+_\d+', m_name):
-                l = re.split(r'_(\d+)', m_name)
-            else:
-                l = [m_name]
-            if l[0] == 'kernel' or l[0] == 'gamma':
-                pointer = getattr(pointer, 'weight')
-            elif l[0] == 'output_bias' or l[0] == 'beta':
-                pointer = getattr(pointer, 'bias')
-            elif l[0] == 'output_weights':
-                pointer = getattr(pointer, 'weight')
-            elif l[0] == 'squad':
-                pointer = getattr(pointer, 'classifier')
-            else:
-                try:
+            try:
+                if re.fullmatch(r'[A-Za-z]+_\d+', m_name):
+                    l = re.split(r'_(\d+)', m_name)
+                else:
+                    l = [m_name]
+                if l[0] == 'kernel' or l[0] == 'gamma':
+                    pointer = getattr(pointer, 'weight')
+                elif l[0] == 'output_bias' or l[0] == 'beta':
+                    pointer = getattr(pointer, 'bias')
+                elif l[0] == 'output_weights':
+                    pointer = getattr(pointer, 'weight')
+                elif l[0] == 'squad':
+                    pointer = getattr(pointer, 'classifier')
+                else:
                     pointer = getattr(pointer, l[0])
-                except AttributeError:
-                    print("Skipping {}".format("/".join(name)))
-                    continue
+
+            except AttributeError:
+                print("Skipping {}".format("/".join(name)))
+                pointer = None
+                continue
             if len(l) >= 2:
                 num = int(l[1])
                 pointer = pointer[num]
+        if pointer is None:
+            continue
+                
         if m_name[-11:] == '_embeddings':
             pointer = getattr(pointer, 'weight')
         elif m_name == 'kernel':
@@ -660,7 +666,7 @@ class BertPreTrainedModel(nn.Module):
         kwargs.pop('state_dict', None)
         cache_dir = kwargs.get('cache_dir', None)
         kwargs.pop('cache_dir', None)
-        from_tf = kwargs.get('from_tf', False)
+        from_tf = kwargs.get('from_tf', True)
         kwargs.pop('from_tf', None)
 
         if pretrained_model_name_or_path in PRETRAINED_MODEL_ARCHIVE_MAP:

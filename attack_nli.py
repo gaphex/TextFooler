@@ -9,13 +9,17 @@ import pickle
 import random
 from sklearn.metrics.pairwise import cosine_similarity
 
+from use import USE
+
+use = USE("/datadrive/axon/asistant/tf_cache")
+
 from InferSent.models import NLINet
 from esim.model import ESIM
 from esim.data import Preprocessor
 from esim.utils import correct_predictions
 
 import tensorflow as tf
-import tensorflow_hub as hub
+from tensorflow.keras.utils import Progbar
 
 import torch
 import torch.nn as nn
@@ -171,52 +175,6 @@ class NLI_infer_BERT(nn.Module):
                 probs_all.append(probs)
 
         return torch.cat(probs_all, dim=0)
-
-
-class USE(object):
-    def __init__(self, cache_path):
-        super(USE, self).__init__()
-        os.environ['TFHUB_CACHE_DIR'] = cache_path
-        module_url = "https://tfhub.dev/google/universal-sentence-encoder-large/3"
-        
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-
-        self.graph = tf.Graph()
-        self.sess = tf.Session(config=config, graph=self.graph)
-        
-        self.build_graph(module_url)
-        
-
-    def build_graph(self, module_url):
-        return
-        with self.graph.as_default():
-            
-            self.embed = hub.Module(module_url)
-            self.sts_input1 = tf.placeholder(tf.string, shape=(None))
-            self.sts_input2 = tf.placeholder(tf.string, shape=(None))
-
-            sts_encode1 = tf.nn.l2_normalize(self.embed(self.sts_input1), axis=1)
-            sts_encode2 = tf.nn.l2_normalize(self.embed(self.sts_input2), axis=1)
-            self.cosine_similarities = tf.reduce_sum(tf.multiply(sts_encode1, sts_encode2), axis=1)
-            clip_cosine_similarities = tf.clip_by_value(self.cosine_similarities, -1.0, 1.0)
-            self.sim_scores = 1.0 - tf.acos(clip_cosine_similarities)
-            self.sess.run([tf.global_variables_initializer(), tf.tables_initializer()])
-
-    def semantic_sim(self, sents1, sents2):
-        scores = [np.ones(len(sents1))-0.03]
-        return scores
-        
-        
-        with self.sess.as_default():
-            scores = self.sess.run(
-                [self.sim_scores],
-                feed_dict={
-                    self.sts_input1: sents1,
-                    self.sts_input2: sents2,
-                })
-            return scores
-
 
 def pick_most_similar_words_batch(src_words, sim_mat, idx2word, ret_count=10, threshold=0.):
     """
@@ -442,137 +400,6 @@ class NLIDataset_ESIM(Dataset):
             hypothesis = data["hypotheses"][i]
             end = min(len(hypothesis), self.max_hypothesis_length)
             self.data["hypotheses"][i][:end] = torch.tensor(hypothesis[:end])
-
-
-# class NLIDataset_InferSent(Dataset):
-#     """
-#     Dataset class for Natural Language Inference datasets.
-#
-#     The class can be used to read preprocessed datasets where the premises,
-#     hypotheses and labels have been transformed to unique integer indices
-#     (this can be done with the 'preprocess_data' script in the 'scripts'
-#     folder of this repository).
-#     """
-#
-#     def __init__(self,
-#                  embedding_path,
-#                  dataset='SNLI',
-#                  word_emb_dim=300,
-#                  batch_size=32,
-#                  bos="<s>",
-#                  eos="</s>"):
-#         """
-#         Args:
-#             data: A dictionary containing the preprocessed premises,
-#                 hypotheses and labels of some dataset.
-#             padding_idx: An integer indicating the index being used for the
-#                 padding token in the preprocessed data. Defaults to 0.
-#             max_premise_length: An integer indicating the maximum length
-#                 accepted for the sequences in the premises. If set to None,
-#                 the length of the longest premise in 'data' is used.
-#                 Defaults to None.
-#             max_hypothesis_length: An integer indicating the maximum length
-#                 accepted for the sequences in the hypotheses. If set to None,
-#                 the length of the longest hypothesis in 'data' is used.
-#                 Defaults to None.
-#         """
-#         self.bos = bos
-#         self.eos = eos
-#         self.word_emb_dim = word_emb_dim
-#         self.batch_size = batch_size
-#
-#         # read all data
-#         files = []
-#         if dataset == 'SNLI':
-#             data_dir = '/data/medg/misc/jindi/nlp/datasets/SNLI/snli_1.0'
-#             for file in os.listdir(data_dir):
-#                 if fnmatch.fnmatch(file, '*_train.txt') or \
-#                         fnmatch.fnmatch(file, '*_dev.txt') or \
-#                         fnmatch.fnmatch(file, '*_test.txt'):
-#                     files.append(file)
-#         else:
-#             data_dir = '/data/medg/misc/jindi/nlp/datasets/MNLI'
-#             for file in os.listdir(data_dir):
-#                 if fnmatch.fnmatch(file, '*_train.txt') or \
-#                         fnmatch.fnmatch(file, '*_dev_matched.txt') or \
-#                         fnmatch.fnmatch(file, '*_dev_mismatched.txt'):
-#                     files.append(file)
-#
-#         data = []
-#         for file in files:
-#             data_tmp = read_data(os.path.join(data_dir, file))
-#             data.extend(data_tmp['premises'] + data_tmp['hypotheses'])
-#
-#         # build word dict
-#         self.word_vec = self.build_vocab(data, embedding_path)
-#
-#     def build_vocab(self, sentences, embedding_path):
-#         word_dict = self.get_word_dict(sentences)
-#         word_vec = self.get_embedding(word_dict, embedding_path)
-#         print('Vocab size : {0}'.format(len(word_vec)))
-#         return word_vec
-#
-#     def get_word_dict(self, sentences):
-#         # create vocab of words
-#         word_dict = {}
-#         for sent in sentences:
-#             for word in sent:
-#                 if word not in word_dict:
-#                     word_dict[word] = ''
-#         word_dict['<s>'] = ''
-#         word_dict['</s>'] = ''
-#         word_dict['<oov>'] = ''
-#         return word_dict
-#
-#     def get_embedding(self, word_dict, embedding_path):
-#         # create word_vec with glove vectors
-#         word_vec = {}
-#         word_vec['<oov>'] = np.random.normal(size=(self.word_emb_dim))
-#         with open(embedding_path) as f:
-#             for line in f:
-#                 word, vec = line.split(' ', 1)
-#                 if word in word_dict:
-#                     word_vec[word] = np.array(list(map(float, vec.split())))
-#         print('Found {0}(/{1}) words with embedding vectors'.format(
-#             len(word_vec), len(word_dict)))
-#         return word_vec
-#
-#     def get_batch(self, batch, word_vec, emb_dim=300):
-#         # sent in batch in decreasing order of lengths (bsize, max_len, word_dim)
-#         lengths = np.array([len(x) for x in batch])
-#         max_len = np.max(lengths)
-#         #         print(max_len)
-#         embed = np.zeros((max_len, len(batch), emb_dim))
-#
-#         for i in range(len(batch)):
-#             for j in range(len(batch[i])):
-#                 if batch[i][j] in word_vec:
-#                     embed[j, i, :] = word_vec[batch[i][j]]
-#                 else:
-#                     embed[j, i, :] = word_vec['<oov>']
-#         #                     embed[j, i, :] = np.random.normal(size=(emb_dim))
-#
-#         return torch.from_numpy(embed).float(), lengths
-#
-#     def transform_text(self, data):
-#         # transform data into seq of embeddings
-#         premises = data['premises']
-#         hypotheses = data['hypotheses']
-#
-#         # add bos and eos
-#         premises = [['<s>'] + premise + ['</s>'] for premise in premises]
-#         hypotheses = [['<s>'] + hypothese + ['</s>'] for hypothese in hypotheses]
-#
-#         batches = []
-#         for stidx in range(0, len(premises), self.batch_size):
-#             # prepare batch
-#             s1_batch, s1_len = self.get_batch(premises[stidx:stidx + self.batch_size],
-#                                               self.word_vec, self.word_emb_dim)
-#             s2_batch, s2_len = self.get_batch(hypotheses[stidx:stidx + self.batch_size],
-#                                               self.word_vec, self.word_emb_dim)
-#             batches.append(((s1_batch, s1_len), (s2_batch, s2_len)))
-#
-#         return batches
 
 
 class NLIDataset_InferSent(Dataset):
@@ -1071,6 +898,10 @@ def main():
     # get data to attack, fetch first [args.data_size] data samples for adversarial attacking
     data = read_data(args.dataset_path, data_size=args.data_size, target_model=args.target_model)
     print("Data import finished!")
+    
+    # build the semantic similarity module
+    
+    use.semantic_sim(np.array(["what", 'asd']),np.array(['where','asdfafd']))
 
     # construct the model
     print("Building Model...")
@@ -1122,8 +953,7 @@ def main():
         cos_sim = cosine_similarity(embeddings, embeddings)  #product / np.dot(norm, norm.T)
     print("Cos sim import finished!")
 
-    # build the semantic similarity module
-    use = USE(args.USE_cache_path)
+    
 
     # start attacking
     orig_failures = 0.
@@ -1138,9 +968,9 @@ def main():
     new_labels = []
 
     stop_words_set = criteria.get_stopwords()
+    
+    bar = Progbar(len(data['premises']))
     for idx, premise in enumerate(data['premises']):
-        if idx % 100 == 0:
-            print('{} samples out of {} have been finished!'.format(idx, args.data_size))
 
         hypothese, true_label = data['hypotheses'][idx], data['labels'][idx]
         if args.perturb_ratio > 0.:
@@ -1179,6 +1009,8 @@ def main():
             adv_hypotheses.append(new_text)
             true_labels.append(true_label)
             new_labels.append(new_label.item())
+            
+        bar.add(1)
 
     message = 'For target model {}: original accuracy: {:.3f}%, adv accuracy: {:.3f}%, ' \
               'avg changed rate: {:.3f}%, num of queries: {:.1f}\n'.format(args.target_model,

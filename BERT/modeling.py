@@ -121,7 +121,7 @@ def load_tf_weights_in_bert(model, tf_checkpoint_path):
         # adam_v and adam_m are variables used in AdamWeightDecayOptimizer to calculated m and v
         # which are not required for using pretrained model
         if any(n in ["adam_v", "adam_m", "global_step"] for n in name):
-            print("Skipping {}".format("/".join(name)))
+            #print("Skipping {}".format("/".join(name)))
             continue
         pointer = model
         for m_name in name:
@@ -142,7 +142,7 @@ def load_tf_weights_in_bert(model, tf_checkpoint_path):
                     pointer = getattr(pointer, l[0])
 
             except AttributeError:
-                print("Skipping {}".format("/".join(name)))
+                #print("Skipping {}".format("/".join(name)))
                 pointer = None
                 continue
             if len(l) >= 2:
@@ -160,7 +160,7 @@ def load_tf_weights_in_bert(model, tf_checkpoint_path):
         except AssertionError as e:
             e.args += (pointer.shape, array.shape)
             raise
-        print("Initialize PyTorch weight {}".format(name))
+        #print("Initialize PyTorch weight {}".format(name))
         pointer.data = torch.from_numpy(array)
     return model
 
